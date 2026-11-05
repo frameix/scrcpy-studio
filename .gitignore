@@ -1,0 +1,22 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Distribution / packaging
+build/
+dist/
+*.egg-info/
+.eggs/
+
+# Arch Linux makepkg artifacts
+pkg/
+src/
+*.pkg.tar.*
+*.tar.gz
+*.tar.zst
+
+# IDE / OS
+.vscode/
+.idea/
+.DS_Store

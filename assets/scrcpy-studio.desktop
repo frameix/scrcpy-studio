@@ -1,0 +1,10 @@
+[Desktop Entry]
+Name=Scrcpy Studio
+Comment=Wayland-native Studio and Controller for Android & Scrcpy
+Exec=scrcpy-studio
+Icon=camera-video
+Terminal=false
+Type=Application
+Categories=AudioVideo;Video;Utility;
+Keywords=scrcpy;android;camera;webcam;recording;mirror;
+StartupWMClass=io.github.frame.ScrcpyStudio
