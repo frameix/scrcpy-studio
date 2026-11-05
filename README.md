@@ -3,10 +3,14 @@
 > **Modern, Wayland-native Studio and Controller for Android via `scrcpy`**  
 > Pensado especialmente para Wayland / Hyprland y entornos de escritorio modernos en Linux.
 
+![Status](https://img.shields.io/badge/Status-En%20Desarrollo%20(Beta)-eab308)
 ![Linux](https://img.shields.io/badge/OS-Linux%20%2F%20Wayland-blue)
 ![Hyprland](https://img.shields.io/badge/WM-Hyprland%20Ready-00bcd4)
 ![Python](https://img.shields.io/badge/Python-GTK4%20%2F%20Libadwaita-4caf50)
-![Scrcpy](https://img.shields.io/badge/Engine-scrcpy%20v5.x-orange)
+![Scrcpy](https://img.shields.io/badge/Engine-scrcpy-orange)
+
+> [!IMPORTANT]
+> **🚧 Proyecto en Desarrollo Activo (WIP / Beta):** `Scrcpy Studio` se encuentra actualmente en fase de desarrollo activo. Nuevas funciones, mejoras de estabilidad y ajustes en la interfaz se están implementando continuamente.
 
 ---
 
