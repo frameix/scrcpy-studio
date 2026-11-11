@@ -386,6 +386,15 @@ class ScrcpyRunner:
             else:
                 cmd.append(f"--camera-facing={config.camera_facing}")
 
+            # Correct sensor landscape mounting: back camera is +90°, front is +270° in portrait
+            if config.webcam_rotation and config.webcam_rotation != "0":
+                cmd.append(f"--capture-orientation={config.webcam_rotation}")
+            elif config.orientation == "vertical":
+                rot = "270" if config.camera_facing == "front" else "90"
+                cmd.append(f"--capture-orientation={rot}")
+            elif config.orientation == "horizontal":
+                cmd.append("--capture-orientation=0")
+
             if config.record:
                 save_dir = Path(config.recordings_dir)
                 save_dir.mkdir(parents=True, exist_ok=True)
@@ -419,6 +428,8 @@ class ScrcpyRunner:
                 cmd.append(f"--camera-id={config.camera_id}")
             else:
                 cmd.append(f"--camera-facing={config.camera_facing}")
+
+            # Correct sensor landscape mounting: back camera is +90°, front is +270° in portrait
             if config.webcam_rotation and config.webcam_rotation != "0":
                 cmd.append(f"--capture-orientation={config.webcam_rotation}")
 
@@ -444,11 +455,21 @@ class ScrcpyRunner:
             monitor_thread.start()
 
             if config.mode in ("mirror", "camera"):
-                aspect_w, aspect_h = (
-                    config.mirror_size
-                    if (config.mirror_size and len(config.mirror_size) == 2)
-                    else (1080, 2340)
-                )
+                if config.mode == "camera" and config.resolution:
+                    try:
+                        rw, rh = [int(x) for x in config.resolution.split("x")]
+                        if config.orientation == "vertical":
+                            aspect_w, aspect_h = min(rw, rh), max(rw, rh)
+                        else:
+                            aspect_w, aspect_h = max(rw, rh), min(rw, rh)
+                    except Exception:
+                        aspect_w, aspect_h = (1080, 1920) if config.orientation == "vertical" else (1920, 1080)
+                else:
+                    aspect_w, aspect_h = (
+                        config.mirror_size
+                        if (config.mirror_size and len(config.mirror_size) == 2)
+                        else (1080, 2340)
+                    )
                 HyprlandRulesManager.start_scrcpy_watcher(
                     pid=self.process.pid,
                     aspect_w=aspect_w,
