@@ -723,19 +723,23 @@ class StudioAppWindow(Adw.ApplicationWindow):
         self.grp_tiling = Adw.PreferencesGroup(title="Ventana y Mosaico (Hyprland)")
         self.grp_tiling.set_header_suffix(
             self._create_section_help_button(
-                "Ventana y Mosaico",
+                "Ventana y Mosaico (Hyprland)",
                 [
                     (
-                        "Lado al Acoplar",
-                        "Elige si la pantalla del teléfono se posiciona en el borde izquierdo o derecho al presionar Super + Alt + Espacio.",
+                        "⌨️ Atajo Super + Alt + Espacio",
+                        "Presiona Super + Alt + Espacio para alternar en cualquier momento entre modo Flotante y Cuadrícula (Mosaico).",
+                    ),
+                    (
+                        "Disposición al Conectar",
+                        "Elige si el celular arranca como ventana flotante libre o si se ancla de inmediato en la columna izquierda o derecha.",
                     ),
                     (
                         "Ancho Matemático Automático",
-                        "El sistema calcula el ancho exacto (534 px) para llenar toda la altura de tu pantalla sin deformar la imagen ni dejar franjas negras.",
+                        "Al acoplarse, Hyprland ajusta automáticamente la columna para ocupar el 100% de la altura sin deformación ni barras negras.",
                     ),
                     (
-                        "Mover en Vivo",
-                        "Si ya está acoplada, puedes cambiar de lado en cualquier momento con Super + Shift + Flechas.",
+                        "Atajos en Caliente (Scrcpy)",
+                        "Con la ventana abierta: Alt + Flechas rota 90° en vivo, Alt + Shift + Flechas voltea espejo, y Alt + F activa pantalla completa.",
                     ),
                 ],
             )
