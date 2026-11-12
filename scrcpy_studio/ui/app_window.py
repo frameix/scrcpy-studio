@@ -1134,21 +1134,22 @@ class StudioAppWindow(Adw.ApplicationWindow):
                 if side_lenses:
                     chosen_lens = side_lenses[0]
 
+            is_vert = (self.orientation_row.get_selected() == 0)
             if chosen_lens is not None:
-                pairs = chosen_lens.video_resolutions()
+                pairs = chosen_lens.video_resolutions(is_vertical=is_vert)
             else:
                 pairs = [
                     (
                         "1920x1080",
-                        CameraLens.describe_resolution("1920x1080"),
+                        CameraLens.describe_resolution("1920x1080", is_vertical=is_vert),
                     ),
                     (
                         "3840x2160",
-                        CameraLens.describe_resolution("3840x2160"),
+                        CameraLens.describe_resolution("3840x2160", is_vertical=is_vert),
                     ),
                     (
                         "1280x720",
-                        CameraLens.describe_resolution("1280x720"),
+                        CameraLens.describe_resolution("1280x720", is_vertical=is_vert),
                     ),
                 ]
 
@@ -1551,6 +1552,7 @@ class StudioAppWindow(Adw.ApplicationWindow):
     def _on_orientation_row_changed(self, combo, _):
         """Dynamically apply orientation changes even when selected inside Settings while running."""
         new_orient = "vertical" if combo.get_selected() == 0 else "horizontal"
+        self._refresh_resolution_combo()
         if new_orient != self.current_orientation:
             self.current_orientation = new_orient
             self._apply_flip_for_current_state()

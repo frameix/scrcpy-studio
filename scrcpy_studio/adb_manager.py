@@ -135,41 +135,42 @@ class CameraLens:
         return "1280x720"
 
     @staticmethod
-    def describe_resolution(res: str, is_top_for_lens: bool = False) -> str:
+    def describe_resolution(res: str, is_top_for_lens: bool = False, is_vertical: bool = False) -> str:
         """Human-friendly label for a camera resolution (e.g. '1920x1080')."""
+        try:
+            w, h = [int(v) for v in res.split("x", 1)]
+            disp_w, disp_h = (h, w) if is_vertical else (w, h)
+        except Exception:
+            disp_w, disp_h = 1920, 1080
+
         known = {
-            "3840x2160": "3840×2160 · 4K Ultra HD (Máxima)",
-            "2560x1440": "2560×1440 · 2K QHD (16:9)",
-            "1920x1440": "1920×1440 · Full HD+ (4:3)",
-            "1920x1080": "1920×1080 · 1080p Full HD (Recomendado Meet/OBS)",
-            "1600x1200": "1600×1200 · UXGA (4:3)",
-            "1440x1080": "1440×1080 · Full HD (4:3)",
-            "1280x960": "1280×960 · HD+ (4:3)",
-            "1280x720": "1280×720 · 720p HD (Ligero)",
-            "960x720": "960×720 · qHD (4:3)",
+            "3840x2160": f"{disp_w}×{disp_h} · 4K Ultra HD" + (" (Vertical 9:16)" if is_vertical else " (Máxima)"),
+            "2560x1440": f"{disp_w}×{disp_h} · 2K QHD" + (" (Vertical 9:16)" if is_vertical else " (16:9)"),
+            "1920x1440": f"{disp_w}×{disp_h} · Full HD+" + (" (Vertical 3:4)" if is_vertical else " (4:3)"),
+            "1920x1080": f"{disp_w}×{disp_h} · 1080p Full HD" + (" (Vertical 9:16)" if is_vertical else " (Recomendado Meet/OBS)"),
+            "1600x1200": f"{disp_w}×{disp_h} · UXGA" + (" (Vertical 3:4)" if is_vertical else " (4:3)"),
+            "1440x1080": f"{disp_w}×{disp_h} · Full HD" + (" (Vertical 3:4)" if is_vertical else " (4:3)"),
+            "1280x960": f"{disp_w}×{disp_h} · HD+" + (" (Vertical 3:4)" if is_vertical else " (4:3)"),
+            "1280x720": f"{disp_w}×{disp_h} · 720p HD" + (" (Vertical 9:16)" if is_vertical else " (Ligero)"),
+            "960x720": f"{disp_w}×{disp_h} · qHD" + (" (Vertical 3:4)" if is_vertical else " (4:3)"),
         }
         if res in known:
             lbl = known[res]
-            if res == "1920x1080" and is_top_for_lens:
+            if res == "1920x1080" and is_top_for_lens and not is_vertical:
                 return "1920×1080 · 1080p Full HD (Máxima del lente)"
             return lbl
         try:
-            w, h = [int(v) for v in res.split("x", 1)]
             ratio = w / h if h else 1.77
-            if abs(ratio - 16 / 9) < 0.04:
-                ar = "16:9"
-            elif abs(ratio - 4 / 3) < 0.04:
-                ar = "4:3"
-            elif abs(ratio - 1.0) < 0.04:
-                ar = "1:1"
+            if is_vertical:
+                ar = "9:16" if abs(ratio - 16 / 9) < 0.04 else ("3:4" if abs(ratio - 4 / 3) < 0.04 else f"1:{ratio:.2f}")
             else:
-                ar = f"{ratio:.2f}:1"
+                ar = "16:9" if abs(ratio - 16 / 9) < 0.04 else ("4:3" if abs(ratio - 4 / 3) < 0.04 else f"{ratio:.2f}:1")
             suffix = " · Máxima" if is_top_for_lens else ""
-            return f"{w}×{h} ({ar}{suffix})"
+            return f"{disp_w}×{disp_h} ({ar}{suffix})"
         except Exception:
             return res
 
-    def video_resolutions(self) -> List[Tuple[str, str]]:
+    def video_resolutions(self, is_vertical: bool = False) -> List[Tuple[str, str]]:
         """Return hardware-encoder-safe video resolutions supported by this lens, sorted highest first."""
         valid: List[Tuple[int, int, str]] = []
         for s in self.supported_sizes:
@@ -208,7 +209,7 @@ class CameraLens:
                 ordered.append(s)
 
         return [
-            (s, CameraLens.describe_resolution(s, is_top_for_lens=(idx == 0)))
+            (s, CameraLens.describe_resolution(s, is_top_for_lens=(idx == 0), is_vertical=is_vertical))
             for idx, s in enumerate(ordered)
         ]
 
