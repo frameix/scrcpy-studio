@@ -11,7 +11,7 @@ import gi
 gi.require_version("Gtk", "4.0")
 gi.require_version("Adw", "1")
 gi.require_version("Gst", "1.0")
-from gi.repository import Adw, Gdk, GLib, GObject, Gst, Gtk, Pango
+from gi.repository import Adw, Gdk, Gio, GLib, GObject, Gst, Gtk, Pango
 
 try:
     gi.require_version("Gsk", "4.0")
@@ -31,6 +31,7 @@ from scrcpy_studio.adb_manager import (
     UsbOtgDevice,
 )
 from scrcpy_studio.hyprland_rules import HyprlandRulesManager
+from scrcpy_studio.preferences import PreferencesManager, StudioPreferences
 from scrcpy_studio.scrcpy_runner import ScrcpyRunner, StudioSessionConfig
 
 # Initialize GStreamer once
@@ -139,11 +140,16 @@ class StudioAppWindow(Adw.ApplicationWindow):
         self._render_pending = False
         self._adb_scan_busy = False
 
+        # Preferences manager & 'Ajustes para Mantener' (Samsung One UI camera style)
+        self.pref_mgr = PreferencesManager.get()
+        self.prefs = self.pref_mgr.prefs
+
         # Ensure persistent floating/opaque rules exist in Hyprland config
         HyprlandRulesManager.ensure_persistent_rules()
 
         self._apply_custom_css()
         self._build_ui()
+        self._apply_saved_preferences()
         self.refresh_devices()
 
         # NOTE: Only listen to notify::fullscreened (NEVER is_maximized(), because Hyprland
@@ -206,6 +212,7 @@ class StudioAppWindow(Adw.ApplicationWindow):
             self._sync_window_geometry()
 
     def _on_close_request(self, _):
+        self._save_current_preferences()
         self._stop_gstreamer()
         if self.runner.is_running:
             self.runner.stop_session()
@@ -330,6 +337,17 @@ class StudioAppWindow(Adw.ApplicationWindow):
         self.btn_help.add_css_class("flat")
         self.btn_help.connect("clicked", self._on_show_general_help)
         self.header.pack_end(self.btn_help)
+
+        # Top-Right: Preferences button (visible in Settings view)
+        self.btn_pref = Gtk.Button(
+            icon_name=self._pick_icon(
+                "preferences-system-symbolic", "emblem-system-symbolic"
+            ),
+            tooltip_text="Preferencias (Ajustes para mantener)",
+        )
+        self.btn_pref.add_css_class("flat")
+        self.btn_pref.connect("clicked", self._on_preferences_clicked)
+        self.header.pack_end(self.btn_pref)
 
         # --- Single Active Body Container (unparents inactive view completely) ---
         self.body_bin = Adw.Bin()
@@ -686,6 +704,7 @@ class StudioAppWindow(Adw.ApplicationWindow):
         )
         self.audio_row.set_model(self.audio_model)
         self.audio_row.set_selected(0)  # Default: Mute / Silent video
+        self.audio_row.connect("notify::selected", lambda *_: self._save_current_preferences())
         self.audio_row.set_visible(False)
         self.grp_camera.add(self.audio_row)
 
@@ -714,9 +733,10 @@ class StudioAppWindow(Adw.ApplicationWindow):
 
         self.switch_record = Adw.SwitchRow(
             title="🔴 Grabar a MP4",
-            subtitle="16 Mbps en ~/Videos/ScrcpyStudio/",
+            subtitle=f"16 Mbps en {self.prefs.recordings_dir}/",
         )
         self.switch_record.set_active(False)  # Default: Recording disabled
+        self.switch_record.connect("notify::active", lambda *_: self._save_current_preferences())
         self.grp_recording.add(self.switch_record)
 
         # --- Window & Tiling Group (Hyprland) ---
@@ -1066,12 +1086,14 @@ class StudioAppWindow(Adw.ApplicationWindow):
         self.active_camera_id = None
         self._refresh_exact_lens_combo()
         self._hot_swap_headless_webcam_if_running()
+        self._save_current_preferences()
 
     def _on_exact_lens_row_changed(self, *_):
         if self._updating_lens_combos:
             return
         self._refresh_resolution_combo()
         self._hot_swap_headless_webcam_if_running()
+        self._save_current_preferences()
 
     def _on_res_row_changed(self, *_):
         if self._updating_lens_combos:
@@ -1080,6 +1102,7 @@ class StudioAppWindow(Adw.ApplicationWindow):
         if 0 <= idx < len(self._available_resolutions):
             self.active_requested_res = self._available_resolutions[idx]
         self._hot_swap_headless_webcam_if_running()
+        self._save_current_preferences()
 
     def _on_webcam_rot_changed(self, *_):
         if self._updating_lens_combos:
@@ -1372,6 +1395,7 @@ class StudioAppWindow(Adw.ApplicationWindow):
         # Header corner icons visibility
         self.btn_refresh.set_visible(not is_phone)
         self.btn_help.set_visible(not is_phone)
+        self.btn_pref.set_visible(not is_phone)
         self.btn_control_bar.set_visible(is_phone)
         self.btn_fullscreen.set_visible(is_phone)
         self.btn_tile_mode.set_visible(is_phone)
@@ -1558,6 +1582,7 @@ class StudioAppWindow(Adw.ApplicationWindow):
             self._apply_flip_for_current_state()
             if self.current_view == "phone":
                 self._sync_window_geometry()
+        self._save_current_preferences()
 
     def _toggle_live_orientation(self):
         """Flip between Vertical and Horizontal live without restarting scrcpy."""
@@ -1936,6 +1961,7 @@ class StudioAppWindow(Adw.ApplicationWindow):
             self._ensure_cameras_loaded(self.selected_device)
             self._sync_v4l2_label_async()
         self._refresh_otg_ui_state()
+        self._save_current_preferences()
 
     def _build_camera_or_mirror_config(self, mode: str) -> StudioSessionConfig:
         self.current_orientation = (
@@ -2009,6 +2035,8 @@ class StudioAppWindow(Adw.ApplicationWindow):
         else:
             audio_mode = "mute"
 
+        self._save_current_preferences()
+
         return StudioSessionConfig(
             serial=self.selected_device.serial,
             mode=mode,
@@ -2021,6 +2049,7 @@ class StudioAppWindow(Adw.ApplicationWindow):
             record=record,
             device_label=self.selected_device.webcam_label,
             webcam_rotation=webcam_rot,
+            recordings_dir=self.prefs.recordings_dir,
             tiling_side=tiling_side,
             audio_mode=audio_mode,
             initial_layout=initial_layout,
@@ -2030,6 +2059,7 @@ class StudioAppWindow(Adw.ApplicationWindow):
         idx = combo.get_selected()
         side = "right" if idx == 2 else "left"
         HyprlandRulesManager.set_tiling_side(side)
+        self._save_current_preferences()
 
     def _on_headless_webcam_ready(self, _v4l2_dev: str):
         self._refresh_webcam_ui_state()
@@ -2419,9 +2449,301 @@ class StudioAppWindow(Adw.ApplicationWindow):
             print(f"[Studio] Captura guardada en: {filepath}")
 
     def _open_videos_folder(self):
-        folder = Path.home() / "Videos" / "ScrcpyStudio"
+        folder = Path(self.prefs.recordings_dir)
         folder.mkdir(parents=True, exist_ok=True)
         subprocess.Popen(["xdg-open", str(folder)])
+
+    def _apply_saved_preferences(self):
+        """Apply remembered settings from StudioPreferences if user chose to keep them."""
+        self._updating_lens_combos = True
+        try:
+            # 1. Orientation
+            if (
+                self.prefs.keep_orientation
+                and 0 <= self.prefs.last_orientation_index < self.orientation_model.get_n_items()
+            ):
+                self.orientation_row.set_selected(self.prefs.last_orientation_index)
+                self.current_orientation = (
+                    "vertical" if self.prefs.last_orientation_index == 0 else "horizontal"
+                )
+
+            # 2. Camera Facing & Exact Lens ID
+            if self.prefs.keep_camera:
+                if 0 <= self.prefs.last_facing_index < self.lens_model.get_n_items():
+                    self.lens_row.set_selected(self.prefs.last_facing_index)
+                if self.prefs.last_exact_lens_id:
+                    self.active_camera_id = self.prefs.last_exact_lens_id
+
+            # 3. Resolution
+            if self.prefs.keep_resolution and self.prefs.last_res_value:
+                self.active_requested_res = self.prefs.last_res_value
+
+            # 4. Window Layout (Tiling / Floating)
+            if (
+                self.prefs.keep_layout
+                and 0 <= self.prefs.last_layout_index < self.layout_mode_model.get_n_items()
+            ):
+                self.layout_mode_row.set_selected(self.prefs.last_layout_index)
+                side = "right" if self.prefs.last_layout_index == 2 else "left"
+                HyprlandRulesManager.set_tiling_side(side)
+
+            # 5. Audio mode
+            if (
+                self.prefs.keep_audio
+                and 0 <= self.prefs.last_audio_index < self.audio_model.get_n_items()
+            ):
+                self.audio_row.set_selected(self.prefs.last_audio_index)
+
+            # 6. Recording Switch
+            if self.prefs.keep_record:
+                self.switch_record.set_active(self.prefs.last_record_active)
+            else:
+                self.switch_record.set_active(False)
+
+            # 7. Subtitle for recording folder
+            self.switch_record.set_subtitle(f"16 Mbps en {self.prefs.recordings_dir}/")
+
+            # 8. Mode of operation (last, so it refreshes UI view visibility properly)
+            if (
+                self.prefs.keep_mode
+                and 0 <= self.prefs.last_mode_index < self.mode_model.get_n_items()
+            ):
+                self.mode_row.set_selected(self.prefs.last_mode_index)
+                self._on_mode_changed(self.mode_row, None)
+        finally:
+            self._updating_lens_combos = False
+
+    def _save_current_preferences(self):
+        """Save active widget state to disk according to 'Ajustes para Mantener' rules."""
+        if not hasattr(self, "prefs") or self._updating_lens_combos:
+            return
+
+        if self.prefs.keep_mode:
+            self.prefs.last_mode_index = self.mode_row.get_selected()
+
+        if self.prefs.keep_orientation:
+            self.prefs.last_orientation_index = self.orientation_row.get_selected()
+
+        if self.prefs.keep_camera:
+            self.prefs.last_facing_index = self.lens_row.get_selected()
+            exact_idx = self.exact_lens_row.get_selected()
+            if (
+                0 <= exact_idx < len(self._filtered_exact_lenses)
+                and self._filtered_exact_lenses[exact_idx] is not None
+            ):
+                self.prefs.last_exact_lens_id = self._filtered_exact_lenses[exact_idx].camera_id
+            else:
+                self.prefs.last_exact_lens_id = None
+
+        if self.prefs.keep_resolution:
+            self.prefs.last_res_index = self.res_row.get_selected()
+            if 0 <= self.prefs.last_res_index < len(self._available_resolutions):
+                self.prefs.last_res_value = self._available_resolutions[self.prefs.last_res_index]
+
+        if self.prefs.keep_layout:
+            self.prefs.last_layout_index = self.layout_mode_row.get_selected()
+
+        if self.prefs.keep_audio:
+            self.prefs.last_audio_index = self.audio_row.get_selected()
+
+        if self.prefs.keep_record:
+            self.prefs.last_record_active = self.switch_record.get_active()
+
+        self.pref_mgr.save()
+
+    def _on_preferences_clicked(self, _):
+        """Open modern Adwaita Preferences Window with Samsung One UI style 'Ajustes para Mantener'."""
+        dialog = Adw.PreferencesWindow(
+            transient_for=self,
+            modal=True,
+            title="Preferencias de Scrcpy Studio",
+            default_width=440,
+            default_height=580,
+        )
+
+        page = Adw.PreferencesPage(
+            title="Ajustes",
+            icon_name="preferences-system-symbolic",
+        )
+        dialog.add(page)
+
+        # --- Grupo 1: Ajustes para Mantener (Estilo Samsung One UI) ---
+        grp_keep = Adw.PreferencesGroup(
+            title="📌 Ajustes para Mantener (Estilo One UI)",
+            description="Elige qué configuraciones se conservan automáticamente entre sesiones.",
+        )
+        page.add(grp_keep)
+
+        def _set_keep(field_name: str, value: bool):
+            setattr(self.prefs, field_name, value)
+            self._save_current_preferences()
+
+        row_keep_mode = Adw.SwitchRow(
+            title="Modo de Operación",
+            subtitle="Recordar si usas Espejo, Cámara Estudio o Webcam",
+        )
+        row_keep_mode.set_active(self.prefs.keep_mode)
+        row_keep_mode.connect(
+            "notify::active",
+            lambda r, _: _set_keep("keep_mode", r.get_active()),
+        )
+        grp_keep.add(row_keep_mode)
+
+        row_keep_orient = Adw.SwitchRow(
+            title="Orientación",
+            subtitle="Recordar si la vista inicia en Vertical o Horizontal",
+        )
+        row_keep_orient.set_active(self.prefs.keep_orientation)
+        row_keep_orient.connect(
+            "notify::active",
+            lambda r, _: _set_keep("keep_orientation", r.get_active()),
+        )
+        grp_keep.add(row_keep_orient)
+
+        row_keep_cam = Adw.SwitchRow(
+            title="Cámara y Lente",
+            subtitle="Recordar selección de cámara trasera/frontal y lente físico",
+        )
+        row_keep_cam.set_active(self.prefs.keep_camera)
+        row_keep_cam.connect(
+            "notify::active",
+            lambda r, _: _set_keep("keep_camera", r.get_active()),
+        )
+        grp_keep.add(row_keep_cam)
+
+        row_keep_res = Adw.SwitchRow(
+            title="Tamaño / Calidad",
+            subtitle="Recordar resolución (1080p, 4K, 720p)",
+        )
+        row_keep_res.set_active(self.prefs.keep_resolution)
+        row_keep_res.connect(
+            "notify::active",
+            lambda r, _: _set_keep("keep_resolution", r.get_active()),
+        )
+        grp_keep.add(row_keep_res)
+
+        row_keep_layout = Adw.SwitchRow(
+            title="Disposición de Ventana",
+            subtitle="Recordar si inicia Flotante o Acoplada (Izquierda/Derecha)",
+        )
+        row_keep_layout.set_active(self.prefs.keep_layout)
+        row_keep_layout.connect(
+            "notify::active",
+            lambda r, _: _set_keep("keep_layout", r.get_active()),
+        )
+        grp_keep.add(row_keep_layout)
+
+        row_keep_audio = Adw.SwitchRow(
+            title="Modo de Audio",
+            subtitle="Recordar si el micrófono va mudo o si captura audio",
+        )
+        row_keep_audio.set_active(self.prefs.keep_audio)
+        row_keep_audio.connect(
+            "notify::active",
+            lambda r, _: _set_keep("keep_audio", r.get_active()),
+        )
+        grp_keep.add(row_keep_audio)
+
+        row_keep_rec = Adw.SwitchRow(
+            title="Estado de Grabación a MP4",
+            subtitle="Mantener la grabación activada (Desactivado por seguridad)",
+        )
+        row_keep_rec.set_active(self.prefs.keep_record)
+        row_keep_rec.connect(
+            "notify::active",
+            lambda r, _: _set_keep("keep_record", r.get_active()),
+        )
+        grp_keep.add(row_keep_rec)
+
+        # --- Grupo 2: Almacenamiento y Rutas ---
+        grp_storage = Adw.PreferencesGroup(
+            title="📁 Almacenamiento y Rutas",
+            description="Ubicación donde se guardan tus videos y capturas.",
+        )
+        page.add(grp_storage)
+
+        row_folder = Adw.ActionRow(
+            title="Carpeta de Grabaciones",
+            subtitle=self.prefs.recordings_dir,
+        )
+
+        btn_open = Gtk.Button(
+            icon_name="folder-open-symbolic",
+            tooltip_text="Abrir carpeta en el gestor de archivos",
+        )
+        btn_open.add_css_class("flat")
+        btn_open.set_valign(Gtk.Align.CENTER)
+        btn_open.connect(
+            "clicked",
+            lambda _: subprocess.Popen(["xdg-open", self.prefs.recordings_dir]),
+        )
+        row_folder.add_suffix(btn_open)
+
+        btn_change = Gtk.Button(label="Cambiar")
+        btn_change.add_css_class("flat")
+        btn_change.set_valign(Gtk.Align.CENTER)
+        btn_change.connect(
+            "clicked",
+            lambda _: self._choose_recordings_folder(dialog, row_folder),
+        )
+        row_folder.add_suffix(btn_change)
+        grp_storage.add(row_folder)
+
+        # --- Grupo 3: Restablecer ---
+        grp_reset = Adw.PreferencesGroup(title="🔄 Restablecer")
+        page.add(grp_reset)
+
+        row_reset = Adw.ActionRow(
+            title="Restablecer Valores de Fábrica",
+            subtitle="Devolver todas las preferencias y memoria a sus valores iniciales",
+        )
+        btn_reset_action = Gtk.Button(label="Restablecer")
+        btn_reset_action.add_css_class("destructive-action")
+        btn_reset_action.set_valign(Gtk.Align.CENTER)
+
+        def _do_reset(_):
+            self.pref_mgr.reset_to_defaults()
+            self.prefs = self.pref_mgr.prefs
+            row_keep_mode.set_active(self.prefs.keep_mode)
+            row_keep_orient.set_active(self.prefs.keep_orientation)
+            row_keep_cam.set_active(self.prefs.keep_camera)
+            row_keep_res.set_active(self.prefs.keep_resolution)
+            row_keep_layout.set_active(self.prefs.keep_layout)
+            row_keep_audio.set_active(self.prefs.keep_audio)
+            row_keep_rec.set_active(self.prefs.keep_record)
+            row_folder.set_subtitle(self.prefs.recordings_dir)
+            self._apply_saved_preferences()
+            dialog.add_toast(Adw.Toast.new("Ajustes restablecidos a valores de fábrica"))
+
+        btn_reset_action.connect("clicked", _do_reset)
+        row_reset.add_suffix(btn_reset_action)
+        grp_reset.add(row_reset)
+
+        dialog.present()
+
+    def _choose_recordings_folder(self, parent_win, row_folder: Adw.ActionRow):
+        """Open native GTK4 folder chooser dialog to select recordings directory."""
+        try:
+            file_dialog = Gtk.FileDialog(title="Seleccionar Carpeta para Grabaciones")
+            initial = Gio.File.new_for_path(self.prefs.recordings_dir)
+            file_dialog.set_initial_folder(initial)
+
+            def _on_finish(d, res):
+                try:
+                    f = d.select_folder_finish(res)
+                    if f:
+                        chosen_path = f.get_path()
+                        if chosen_path:
+                            self.prefs.recordings_dir = chosen_path
+                            self.pref_mgr.save()
+                            row_folder.set_subtitle(chosen_path)
+                            self.switch_record.set_subtitle(f"16 Mbps en {chosen_path}/")
+                except GLib.GError:
+                    pass  # User canceled dialog
+
+            file_dialog.select_folder(parent_win, None, _on_finish)
+        except Exception as e:
+            print(f"[Studio] Error opening FileDialog: {e}")
 
     def _create_section_help_button(
         self, title: str, items: List[tuple]
