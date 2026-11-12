@@ -139,6 +139,7 @@ class StudioAppWindow(Adw.ApplicationWindow):
         self._latest_frame = None
         self._render_pending = False
         self._adb_scan_busy = False
+        self._prev_had_usb = False
 
         # Preferences manager & 'Ajustes para Mantener' (Samsung One UI camera style)
         self.pref_mgr = PreferencesManager.get()
@@ -1866,12 +1867,25 @@ class StudioAppWindow(Adw.ApplicationWindow):
         self.device_model.splice(0, self.device_model.get_n_items(), new_items)
 
         ready_devices = [d for d in self.devices if d.is_ready]
+        usb_ready = [d for d in ready_devices if d.connection_type == "usb"]
+        current_has_usb = len(usb_ready) > 0
+
+        # Smart cable promotion: If a physical USB cable was just connected (wasn't present in previous check),
+        # auto-select USB immediately for zero lag and maximum direct bandwidth.
+        just_plugged_usb = current_has_usb and not getattr(self, "_prev_had_usb", False)
+        self._prev_had_usb = current_has_usb
+
         if ready_devices:
-            # Preserve user's explicit transport choice (e.g. Wi-Fi vs USB) if still ready, else default to [0] (USB first)
-            preserved = next(
-                (d for d in ready_devices if d.serial == prev_serial), None
-            )
-            self.selected_device = preserved if preserved else ready_devices[0]
+            if just_plugged_usb and usb_ready:
+                # Newly connected cable takes priority
+                self.selected_device = usb_ready[0]
+            else:
+                # Preserve user's explicit choice if still present, else default to [0] (USB first)
+                preserved = next(
+                    (d for d in ready_devices if d.serial == prev_serial), None
+                )
+                self.selected_device = preserved if preserved else ready_devices[0]
+
             sel_idx = self.devices.index(self.selected_device)
             if self.device_combo.get_selected() != sel_idx:
                 self.device_combo.set_selected(sel_idx)

@@ -38,11 +38,11 @@ class AndroidDevice:
             return f"⏳ {name} [Offline - Reconectando...]"
 
         if self.connection_type == "usb":
-            conn = f"USB ({self.serial})"
+            conn = f"⚡ Cable USB (Baja latencia · {self.serial})"
         elif self.ip and self.port:
-            conn = f"Wi-Fi ({self.ip}:{self.port})"
+            conn = f"📶 Wi-Fi ({self.ip}:{self.port})"
         else:
-            conn = "Wi-Fi (Auto)"
+            conn = "📶 Wi-Fi (Auto)"
         return f"{name} [{conn}]"
 
 
