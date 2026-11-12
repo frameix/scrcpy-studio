@@ -676,6 +676,19 @@ class StudioAppWindow(Adw.ApplicationWindow):
         self.webcam_rot_row.set_visible(False)
         self.grp_camera.add(self.webcam_rot_row)
 
+        self.audio_row = Adw.ComboRow(title="Audio del Micrófono")
+        self.audio_model = Gtk.StringList.new(
+            [
+                "🔇 Mudo (Sin Audio / Máxima Fluidez Wi-Fi)",
+                "🎙️ Grabar Micro (Silenciar altavoces PC)",
+                "🔊 Grabar Micro y Escuchar en PC",
+            ]
+        )
+        self.audio_row.set_model(self.audio_model)
+        self.audio_row.set_selected(0)  # Default: Mute / Silent video
+        self.audio_row.set_visible(False)
+        self.grp_camera.add(self.audio_row)
+
         # --- Recording Group (Default: OFF) ---
         self.grp_recording = Adw.PreferencesGroup(title="Grabación")
         self.grp_recording.set_header_suffix(
@@ -1907,6 +1920,7 @@ class StudioAppWindow(Adw.ApplicationWindow):
         self.exact_lens_row.set_visible(is_any_cam)
         self.res_row.set_visible(is_any_cam)
         self.webcam_rot_row.set_visible(is_webcam)
+        self.audio_row.set_visible(mode_key == "camera")
 
         if is_any_cam and self.selected_device and self.selected_device.is_ready:
             self._ensure_cameras_loaded(self.selected_device)
@@ -1968,6 +1982,14 @@ class StudioAppWindow(Adw.ApplicationWindow):
 
         tiling_side = "left" if self.tiling_side_row.get_selected() == 0 else "right"
 
+        audio_idx = self.audio_row.get_selected()
+        if audio_idx == 1:
+            audio_mode = "record_only"
+        elif audio_idx == 2:
+            audio_mode = "playback"
+        else:
+            audio_mode = "mute"
+
         return StudioSessionConfig(
             serial=self.selected_device.serial,
             mode=mode,
@@ -1981,6 +2003,7 @@ class StudioAppWindow(Adw.ApplicationWindow):
             device_label=self.selected_device.webcam_label,
             webcam_rotation=webcam_rot,
             tiling_side=tiling_side,
+            audio_mode=audio_mode,
         )
 
     def _on_tiling_side_row_changed(self, combo, _):

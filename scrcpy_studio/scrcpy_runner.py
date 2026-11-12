@@ -65,6 +65,7 @@ class StudioSessionConfig:
     webcam_rotation: str = "0"  # "0", "90", "180", "270", "flip0"
     recordings_dir: str = str(Path.home() / "Videos" / "ScrcpyStudio")
     tiling_side: str = "left"  # "left" or "right"
+    audio_mode: str = "mute"  # "mute", "record_only", "playback"
 
 
 class ScrcpyRunner:
@@ -355,6 +356,10 @@ class ScrcpyRunner:
             elif config.orientation == "vertical":
                 cmd.append("--capture-orientation=@0")
 
+            is_wireless = ":" in config.serial or "tcp" in config.serial.lower() or "." in config.serial
+            if is_wireless:
+                cmd.append("--video-buffer=50")
+
             if config.record:
                 save_dir = Path(config.recordings_dir)
                 save_dir.mkdir(parents=True, exist_ok=True)
@@ -394,6 +399,19 @@ class ScrcpyRunner:
                 cmd.append(f"--capture-orientation={rot}")
             elif config.orientation == "horizontal":
                 cmd.append("--capture-orientation=0")
+
+            # Audio mode: mute (no sound / best wireless performance), record_only (clean mic recording without PC echo), or playback
+            if config.audio_mode == "mute":
+                cmd.append("--no-audio")
+            elif config.audio_mode == "record_only":
+                cmd.extend(["--audio-source=mic", "--no-audio-playback"])
+            elif config.audio_mode == "playback":
+                cmd.append("--audio-source=mic")
+
+            # Buffer 50ms over Wi-Fi/TCP to smooth out jitter and eliminate occasional lag spikes
+            is_wireless = ":" in config.serial or "tcp" in config.serial.lower() or "." in config.serial
+            if is_wireless:
+                cmd.append("--video-buffer=50")
 
             if config.record:
                 save_dir = Path(config.recordings_dir)
