@@ -66,6 +66,7 @@ class StudioSessionConfig:
     recordings_dir: str = str(Path.home() / "Videos" / "ScrcpyStudio")
     tiling_side: str = "left"  # "left" or "right"
     audio_mode: str = "mute"  # "mute", "record_only", "playback"
+    initial_layout: str = "float"  # "float", "tiled_left", "tiled_right"
 
 
 class ScrcpyRunner:
@@ -494,6 +495,7 @@ class ScrcpyRunner:
                     aspect_h=aspect_h,
                     orientation=config.orientation,
                     tiling_side=config.tiling_side,
+                    initial_layout=config.initial_layout,
                 )
 
             return True

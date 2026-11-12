@@ -480,6 +480,7 @@ class HyprlandRulesManager:
         aspect_h: int = 2340,
         orientation: str = "vertical",
         tiling_side: str = "left",
+        initial_layout: str = "float",
     ):
         """Monitor Hyprland socket2 for scrcpy window floating/tiling events and auto-format layout."""
         if not cls.is_hyprland():
@@ -489,7 +490,7 @@ class HyprlandRulesManager:
         cls._aspect_w = aspect_w
         cls._aspect_h = aspect_h
         cls._session_orientation = orientation
-        cls._tiling_side = tiling_side
+        cls._tiling_side = "right" if initial_layout == "tiled_right" else tiling_side
         cls._watcher_stop_event.clear()
 
         cls._watcher_thread = threading.Thread(
@@ -498,7 +499,43 @@ class HyprlandRulesManager:
             name="ScrcpyHyprlandWatcher",
         )
         cls._watcher_thread.start()
-        print(f"[HyprlandRules] Started socket2 watcher for scrcpy (PID {pid}, side: {tiling_side})")
+        print(f"[HyprlandRules] Started socket2 watcher for scrcpy (PID {pid}, side: {cls._tiling_side}, layout: {initial_layout})")
+
+        if initial_layout in ("tiled_left", "tiled_right"):
+            threading.Thread(
+                target=cls._apply_initial_layout_worker,
+                args=(pid, cls._tiling_side),
+                daemon=True,
+                name="ScrcpyInitialLayoutWorker",
+            ).start()
+
+    @classmethod
+    def _apply_initial_layout_worker(cls, pid: Optional[int], target_side: str):
+        """Wait for scrcpy window to appear and immediately tile it to preferred side."""
+        time.sleep(0.12)
+        addr = None
+        for _ in range(35):
+            if cls._watcher_stop_event.is_set():
+                return
+            clients = cls._get_all_clients()
+            for c in clients:
+                c_pid = c.get("pid")
+                c_class = c.get("class", "").lower()
+                c_title = c.get("title", "").lower()
+                if (pid and c_pid == pid) or (c_class == "scrcpy") or ("scrcpy studio" in c_title):
+                    addr = cls._normalize_addr(c.get("address"))
+                    break
+            if addr:
+                break
+            time.sleep(0.05)
+
+        if not addr:
+            return
+
+        cls._dsp_focus(addr)
+        cls._dsp_float("off", addr)
+        time.sleep(0.08)
+        cls._optimize_scrcpy_tiling_worker(addr)
 
     @classmethod
     def set_tiling_side(cls, side: str):
@@ -522,6 +559,8 @@ class HyprlandRulesManager:
                     elif side == "right" and at_x < 500:
                         cls._dsp_focus(addr)
                         cls._dispatch_lua('hl.dsp.layout("swapsplit")')
+                    time.sleep(0.06)
+                    cls._optimize_scrcpy_tiling_worker(addr)
                     break
 
         threading.Thread(target=_worker, daemon=True).start()
@@ -676,8 +715,16 @@ class HyprlandRulesManager:
             target_w = max(360, min(640, int(round(h0 * aspect_ratio))))
             cur_w = int(cur_size[0])
             delta = target_w - cur_w
+
+            # Dwindle layout splits: resizing the right child moves the split separator in the opposite direction
+            final_at_x = int(win.get("at", [0, 0])[0])
+            is_on_right = final_at_x > (mon_w // 3)
+            resize_delta = -delta if is_on_right else delta
+
             if abs(delta) > 12:
+                cls._dsp_focus(addr)
+                time.sleep(0.02)
                 cls._dispatch_lua(
-                    f'hl.dsp.window.resize({{ x = {delta}, y = 0, relative = true, window = "address:{addr}" }})'
+                    f'hl.dsp.window.resize({{ x = {resize_delta}, y = 0, relative = true, window = "address:{addr}" }})'
                 )
-                print(f"[HyprlandRules] Resized tiled scrcpy column to {target_w}px (delta: {delta:+d})")
+                print(f"[HyprlandRules] Resized tiled scrcpy column to {target_w}px (side={'right' if is_on_right else 'left'}, delta: {resize_delta:+d})")

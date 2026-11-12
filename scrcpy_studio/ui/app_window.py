@@ -742,15 +742,19 @@ class StudioAppWindow(Adw.ApplicationWindow):
         )
         content_box.append(self.grp_tiling)
 
-        self.tiling_side_row = Adw.ComboRow(title="Lado en Mosaico")
-        self.tiling_side_row.set_subtitle("Posición automática con Super + Alt + Espacio")
-        self.tiling_side_model = Gtk.StringList.new(
-            ["⬅️ Izquierda (Predeterminado)", "➡️ Derecha"]
+        self.layout_mode_row = Adw.ComboRow(title="Disposición de Ventana")
+        self.layout_mode_row.set_subtitle("Modo al conectar (alterna con Super + Alt + Espacio)")
+        self.layout_mode_model = Gtk.StringList.new(
+            [
+                "📱 Ventana Flotante (Predeterminado)",
+                "⬅️ Acoplar a la Izquierda (Mosaico)",
+                "➡️ Acoplar a la Derecha (Mosaico)",
+            ]
         )
-        self.tiling_side_row.set_model(self.tiling_side_model)
-        self.tiling_side_row.set_selected(0)
-        self.tiling_side_row.connect("notify::selected", self._on_tiling_side_row_changed)
-        self.grp_tiling.add(self.tiling_side_row)
+        self.layout_mode_row.set_model(self.layout_mode_model)
+        self.layout_mode_row.set_selected(0)
+        self.layout_mode_row.connect("notify::selected", self._on_layout_mode_row_changed)
+        self.grp_tiling.add(self.layout_mode_row)
 
         # --- Bottom Action Bar in Settings ---
         action_bar = Gtk.ActionBar()
@@ -1980,7 +1984,16 @@ class StudioAppWindow(Adw.ApplicationWindow):
             except Exception:
                 self.stream_aspect_w, self.stream_aspect_h = 1080, 1920
 
-        tiling_side = "left" if self.tiling_side_row.get_selected() == 0 else "right"
+        layout_idx = self.layout_mode_row.get_selected()
+        if layout_idx == 1:
+            initial_layout = "tiled_left"
+            tiling_side = "left"
+        elif layout_idx == 2:
+            initial_layout = "tiled_right"
+            tiling_side = "right"
+        else:
+            initial_layout = "float"
+            tiling_side = "left"
 
         audio_idx = self.audio_row.get_selected()
         if audio_idx == 1:
@@ -2004,10 +2017,12 @@ class StudioAppWindow(Adw.ApplicationWindow):
             webcam_rotation=webcam_rot,
             tiling_side=tiling_side,
             audio_mode=audio_mode,
+            initial_layout=initial_layout,
         )
 
-    def _on_tiling_side_row_changed(self, combo, _):
-        side = "left" if combo.get_selected() == 0 else "right"
+    def _on_layout_mode_row_changed(self, combo, _):
+        idx = combo.get_selected()
+        side = "right" if idx == 2 else "left"
         HyprlandRulesManager.set_tiling_side(side)
 
     def _on_headless_webcam_ready(self, _v4l2_dev: str):
